@@ -11,9 +11,16 @@ Usage:
 """
 
 import json
+import os
 import subprocess
 import sys
 import numpy as np
+
+try:
+    import cv2
+    HAS_CV2 = True
+except ImportError:
+    HAS_CV2 = False
 
 RESIZE_WIDTH = 320
 RESIZE_HEIGHT = 180
@@ -41,11 +48,39 @@ def get_video_info(video_path: str) -> dict:
     return {'fps': fps, 'total_frames': total_frames, 'duration': duration}
 
 
-def analyze_motion(video_path: str, output_path: str, sample_every: int = 3) -> None:
+def load_court_mask(mask_path: str) -> np.ndarray:
+    """Load court_mask.json and return a boolean mask at analysis resolution."""
+    with open(mask_path) as f:
+        data = json.load(f)
+    points = np.array([
+        [int(x * RESIZE_WIDTH), int(y * RESIZE_HEIGHT)]
+        for x, y in data['points']
+    ], dtype=np.int32)
+    mask = np.zeros((RESIZE_HEIGHT, RESIZE_WIDTH), dtype=np.uint8)
+    if HAS_CV2:
+        cv2.fillPoly(mask, [points], 1)
+    else:
+        # Fallback: axis-aligned bounding box if cv2 unavailable
+        xs, ys = points[:, 0], points[:, 1]
+        mask[ys.min():ys.max(), xs.min():xs.max()] = 1
+    return mask.astype(bool)
+
+
+def analyze_motion(video_path: str, output_path: str, sample_every: int = 3,
+                   mask_path: str = None) -> None:
     info = get_video_info(video_path)
     fps = info['fps']
     total_frames = info['total_frames']
     duration = info['duration']
+
+    # Load court mask if provided
+    court_mask = None
+    if mask_path and os.path.exists(mask_path):
+        court_mask = load_court_mask(mask_path)
+        coverage = court_mask.sum() / court_mask.size * 100
+        print(f"[motion_analysis] Court mask loaded ({coverage:.0f}% of frame)", file=sys.stderr)
+    elif mask_path:
+        print(f"[motion_analysis] WARNING: mask not found at {mask_path} — using full frame", file=sys.stderr)
 
     print(f"[motion_analysis] {video_path}", file=sys.stderr)
     print(f"[motion_analysis] {fps:.1f} fps | {total_frames} frames | {duration:.1f}s", file=sys.stderr)
@@ -76,7 +111,10 @@ def analyze_motion(video_path: str, output_path: str, sample_every: int = 3) -> 
 
             if prev_gray is not None:
                 diff = np.abs(gray.astype(np.int16) - prev_gray.astype(np.int16))
-                energy = float(np.mean(diff))
+                if court_mask is not None:
+                    energy = float(np.mean(diff[court_mask]))
+                else:
+                    energy = float(np.mean(diff))
                 timestamp = round(frame_idx / fps, 3)
                 samples.append({"t": timestamp, "e": round(energy, 4)})
 
@@ -114,5 +152,6 @@ if __name__ == "__main__":
         print("Usage: motion_analysis.py <video_path> <output_json> [sample_every_n]", file=sys.stderr)
         sys.exit(1)
 
-    n = int(sys.argv[3]) if len(sys.argv) > 3 else 3
-    analyze_motion(sys.argv[1], sys.argv[2], n)
+    n    = int(sys.argv[3])    if len(sys.argv) > 3 else 3
+    mask = sys.argv[4]         if len(sys.argv) > 4 else None
+    analyze_motion(sys.argv[1], sys.argv[2], n, mask)

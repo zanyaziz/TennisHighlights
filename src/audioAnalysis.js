@@ -41,6 +41,7 @@ export async function analyzeAudio(videoPath, tempDir) {
       String(config.audioOnsetPercentile),
       String(config.calibrationWindow),
       String(config.noiseMultiplier),
+      String(config.calibrationSearchWindow),
     ],
     { timeout: 45 * 60 * 1000 }
   );

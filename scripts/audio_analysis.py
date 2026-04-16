@@ -62,6 +62,7 @@ def detect_points(
     onset_percentile: float = 85.0,
     calibration_window: float = 60.0,
     noise_multiplier: float = 3.0,
+    calibration_search_window: float = 180.0,
 ) -> None:
 
     print(f"[audio_analysis] Extracting audio from {video_path}", file=sys.stderr)
@@ -86,30 +87,42 @@ def detect_points(
     smoothed = np.convolve(onset_env, np.ones(smooth_frames) / smooth_frames, mode='same')
 
     # ── Adaptive noise floor calibration ─────────────────────────────────────
-    # Use the first `calibration_window` seconds (pre-play/warmup silence) to
-    # measure the background noise level for this specific recording.
-    # Threshold = noise_floor + noise_multiplier × noise_std
-    # This adapts automatically to indoor/outdoor, crowd size, mic position.
+    # Rather than blindly using the first N seconds (which may contain warm-up
+    # hitting), slide a window across the first calibration_search_window seconds
+    # and pick the QUIETEST window (lowest std = most stable background noise).
+    # Threshold = quiet_median + noise_multiplier × quiet_std
     threshold = None
-    calib_frames = int(calibration_window * frames_per_sec)
-    if calib_frames >= 10 and calib_frames < len(smoothed):
-        calib = smoothed[:calib_frames]
+    calib_frames  = int(calibration_window * frames_per_sec)
+    search_frames = min(int(calibration_search_window * frames_per_sec), len(smoothed))
+
+    if calib_frames >= 10 and search_frames > calib_frames:
+        step = max(1, calib_frames // 6)   # slide by ~10s at a time
+        best_std   = np.inf
+        best_start = 0
+
+        for start in range(0, search_frames - calib_frames, step):
+            w = smoothed[start:start + calib_frames]
+            w_std = float(np.std(w))
+            if w_std < best_std:
+                best_std   = w_std
+                best_start = start
+
+        calib       = smoothed[best_start:best_start + calib_frames]
         noise_floor = float(np.median(calib))
         noise_std   = float(np.std(calib))
         adaptive    = noise_floor + noise_multiplier * noise_std
-        # Sanity check: adaptive threshold must be above the noise floor
-        # and below the global 99th percentile (avoids calibrating on a noisy start)
+
         ceiling = float(np.percentile(smoothed, 99))
         if noise_std > 0 and adaptive < ceiling:
             threshold = adaptive
+            t_start_s = best_start / frames_per_sec
             print(
-                f"[audio_analysis] Noise floor: {noise_floor:.4f} ± {noise_std:.4f}  "
-                f"→ threshold: {threshold:.4f} (calibrated from first {calibration_window:.0f}s)",
+                f"[audio_analysis] Quietest window: {t_start_s:.0f}s–{t_start_s + calibration_window:.0f}s  "
+                f"noise={noise_floor:.4f} ± {noise_std:.4f}  → threshold: {threshold:.4f}",
                 file=sys.stderr,
             )
 
     if threshold is None:
-        # Fallback: fixed global percentile
         threshold = float(np.percentile(smoothed, onset_percentile))
         print(
             f"[audio_analysis] Onset energy threshold: {threshold:.4f} "
@@ -175,7 +188,8 @@ if __name__ == '__main__':
     if len(sys.argv) > 4: kwargs['min_duration']       = float(sys.argv[4])
     if len(sys.argv) > 5: kwargs['post_buffer']        = float(sys.argv[5])
     if len(sys.argv) > 6: kwargs['onset_percentile']   = float(sys.argv[6])
-    if len(sys.argv) > 7: kwargs['calibration_window'] = float(sys.argv[7])
-    if len(sys.argv) > 8: kwargs['noise_multiplier']   = float(sys.argv[8])
+    if len(sys.argv) > 7: kwargs['calibration_window']        = float(sys.argv[7])
+    if len(sys.argv) > 8: kwargs['noise_multiplier']           = float(sys.argv[8])
+    if len(sys.argv) > 9: kwargs['calibration_search_window']  = float(sys.argv[9])
 
     detect_points(sys.argv[1], sys.argv[2], **kwargs)

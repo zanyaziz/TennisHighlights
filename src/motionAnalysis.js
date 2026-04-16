@@ -28,15 +28,20 @@ const SCRIPTS_DIR = path.join(__dirname, '..', 'scripts');
 export async function analyzeMotion(videoPath, tempDir) {
   const outputPath = path.join(tempDir, 'motion.json');
 
+  const args = [
+    path.join(SCRIPTS_DIR, 'motion_analysis.py'),
+    videoPath,
+    outputPath,
+    String(config.motionSampleEveryNFrames),
+  ];
+  if (config.courtMaskPath) {
+    args.push(path.resolve(config.courtMaskPath));
+  }
+
   const { stderr } = await execFileAsync(
     config.pythonBin,
-    [
-      path.join(SCRIPTS_DIR, 'motion_analysis.py'),
-      videoPath,
-      outputPath,
-      String(config.motionSampleEveryNFrames),
-    ],
-    { timeout: 45 * 60 * 1000 }  // 45-min hard cap for very long matches
+    args,
+    { timeout: 45 * 60 * 1000 }
   );
 
   // Forward Python stderr to our console
@@ -67,27 +72,42 @@ export function findActiveSegments(motionData) {
     inactivityTimeout,
     maxGapToMerge,
     calibrationWindow,
+    calibrationSearchWindow,
     noiseMultiplier,
   } = config;
 
   if (!samples || samples.length === 0) return [];
 
   // ── Adaptive noise floor calibration ───────────────────────────────────────
-  // Use the first calibrationWindow seconds to measure background noise level.
-  // Threshold = noise_floor + noiseMultiplier × noise_std
+  // Slide a window across the first calibrationSearchWindow seconds and pick
+  // the QUIETEST window (lowest std) as the noise floor reference.
   let effectiveThreshold = motionThreshold;
-  const calibSamples = samples.filter(s => s.t < calibrationWindow);
-  if (calibSamples.length >= 10) {
-    const energies = calibSamples.map(s => s.e);
-    const mean = energies.reduce((a, b) => a + b, 0) / energies.length;
-    const std  = Math.sqrt(energies.reduce((s, v) => s + (v - mean) ** 2, 0) / energies.length);
+  const searchSamples = samples.filter(s => s.t < calibrationSearchWindow);
+  const calibCount    = samples.filter(s => s.t < calibrationWindow).length;
+
+  if (calibCount >= 10 && searchSamples.length > calibCount) {
+    const step = Math.max(1, Math.floor(calibCount / 6));
+    let bestStd = Infinity, bestStart = 0;
+
+    for (let i = 0; i <= searchSamples.length - calibCount; i += step) {
+      const w       = searchSamples.slice(i, i + calibCount).map(s => s.e);
+      const wMean   = w.reduce((a, b) => a + b, 0) / w.length;
+      const wStd    = Math.sqrt(w.reduce((s, v) => s + (v - wMean) ** 2, 0) / w.length);
+      if (wStd < bestStd) { bestStd = wStd; bestStart = i; }
+    }
+
+    const calib    = searchSamples.slice(bestStart, bestStart + calibCount).map(s => s.e);
+    const mean     = calib.reduce((a, b) => a + b, 0) / calib.length;
+    const std      = Math.sqrt(calib.reduce((s, v) => s + (v - mean) ** 2, 0) / calib.length);
     const adaptive = mean + noiseMultiplier * std;
-    // Only use adaptive threshold if it's meaningfully above the noise floor
+
     if (std > 0 && adaptive > mean * 1.5) {
       effectiveThreshold = adaptive;
+      const tStart = searchSamples[bestStart].t.toFixed(0);
+      const tEnd   = searchSamples[Math.min(bestStart + calibCount - 1, searchSamples.length - 1)].t.toFixed(0);
       process.stdout.write(
-        `[motion_analysis] Noise floor: ${mean.toFixed(4)} ± ${std.toFixed(4)}` +
-        `  → threshold: ${effectiveThreshold.toFixed(4)} (calibrated)\n`
+        `[motion_analysis] Quietest window: ${tStart}s–${tEnd}s  ` +
+        `noise=${mean.toFixed(4)} ± ${std.toFixed(4)}  → threshold: ${effectiveThreshold.toFixed(4)}\n`
       );
     }
   }
