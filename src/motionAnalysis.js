@@ -66,9 +66,31 @@ export function findActiveSegments(motionData) {
     minPlayDuration,
     inactivityTimeout,
     maxGapToMerge,
+    calibrationWindow,
+    noiseMultiplier,
   } = config;
 
   if (!samples || samples.length === 0) return [];
+
+  // ── Adaptive noise floor calibration ───────────────────────────────────────
+  // Use the first calibrationWindow seconds to measure background noise level.
+  // Threshold = noise_floor + noiseMultiplier × noise_std
+  let effectiveThreshold = motionThreshold;
+  const calibSamples = samples.filter(s => s.t < calibrationWindow);
+  if (calibSamples.length >= 10) {
+    const energies = calibSamples.map(s => s.e);
+    const mean = energies.reduce((a, b) => a + b, 0) / energies.length;
+    const std  = Math.sqrt(energies.reduce((s, v) => s + (v - mean) ** 2, 0) / energies.length);
+    const adaptive = mean + noiseMultiplier * std;
+    // Only use adaptive threshold if it's meaningfully above the noise floor
+    if (std > 0 && adaptive > mean * 1.5) {
+      effectiveThreshold = adaptive;
+      process.stdout.write(
+        `[motion_analysis] Noise floor: ${mean.toFixed(4)} ± ${std.toFixed(4)}` +
+        `  → threshold: ${effectiveThreshold.toFixed(4)} (calibrated)\n`
+      );
+    }
+  }
 
   // ── 1. Smooth ────────────────────────────────────────────────────────────────
   const smoothed = samples.map((s, i) => {
@@ -86,7 +108,7 @@ export function findActiveSegments(motionData) {
   let lastActiveTime = 0;
 
   for (const sample of smoothed) {
-    if (sample.e >= motionThreshold) {
+    if (sample.e >= effectiveThreshold) {
       if (!inActive) {
         segStart = sample.t;
         inActive = true;

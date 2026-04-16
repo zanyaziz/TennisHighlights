@@ -1,9 +1,8 @@
 /**
  * serveDetection.js
  *
- * Bridges to serve_detection.py (MediaPipe Pose) to find the precise serve
- * start frame for each active segment, then builds the final clip list with
- * pre-serve buffer and post-point buffer applied.
+ * Bridges to serve_detection.py (FFmpeg + blob tracking) to find the precise
+ * ball toss frame for each play segment, then builds the final clip list.
  */
 
 import { execFile } from 'child_process';
@@ -39,8 +38,7 @@ export async function detectServes(videoPath, segments, tempDir) {
       segmentsPath,
       outputPath,
       String(config.serveSearchWindow),
-      String(config.serveMinWristRiseFrames),
-      String(config.serveWristThreshold),
+      String(config.postPointBuffer),
     ],
     { timeout: 45 * 60 * 1000 }
   );
@@ -52,7 +50,6 @@ export async function detectServes(videoPath, segments, tempDir) {
 
 /**
  * Convert serve detection output into a clip list.
- * Each clip has a start (serve - preServeBuffer) and end (segment_end + postPointBuffer).
  *
  * @param {{ serve_time:number, segment_end:number, detected:boolean }[]} serveData
  * @returns {{ index:number, start:number, end:number, serveDetected:boolean }[]}
@@ -61,7 +58,7 @@ export function buildClipList(serveData) {
   return serveData.map((point, i) => ({
     index: i + 1,
     start: Math.max(0, point.serve_time - config.preServeBuffer),
-    end: point.segment_end + config.postPointBuffer,
+    end:   point.segment_end + config.postPointBuffer,
     serveDetected: point.detected,
   }));
 }

@@ -11,7 +11,7 @@ export default {
   // Mean pixel-diff energy (0–255) above which a frame is considered "active".
   // Increase if getting too many false positives (e.g. swaying trees).
   // Decrease if missing real play. Start here and tune after first run.
-  motionThreshold: 3.5,
+  motionThreshold: 1.0,
 
   // Smoothing window (in samples) applied to energy time-series to remove noise.
   smoothingWindow: 5,
@@ -50,6 +50,48 @@ export default {
 
   // Seconds to include AFTER the detected point end (catches the ball landing, etc.)
   postPointBuffer: 0.5,
+
+
+  // ── Audio Onset Detection ───────────────────────────────────────────────────
+  // Max silence gap (seconds) before declaring a point over.
+  // 5s: merges fault+second serve (~5s apart) but splits between points (20-25s apart).
+  // Lower if points are being merged together; raise if points are being split.
+  audioGapThreshold: 5.0,
+
+  // Onset energy percentile used as the active/inactive threshold (0–100).
+  // Higher = stricter — only the loudest impact bursts count as play.
+  // Raise if crowd noise is creating false segments; lower if missing quiet points.
+  audioOnsetPercentile: 85,
+
+  // Minimum cluster duration (seconds) to count as a real point.
+  // Filters out stray sounds (crowd clap, chair scrape).
+  audioMinPointDuration: 3.0,
+
+  // Seconds added after the last impact to catch the ball landing.
+  audioPostBuffer: 1.5,
+
+
+  // ── Cross-validation ────────────────────────────────────────────────────────
+  // Seconds at the start of the recording used to calibrate the noise floor.
+  // The first ~60s is almost always pre-play warmup or silence — ideal for
+  // measuring background noise specific to this court/mic/conditions.
+  calibrationWindow: 60,
+
+  // How many standard deviations above the quiet baseline to set the threshold.
+  // 3.0 = only flag audio/motion significantly above background noise.
+  // Lower (e.g. 2.0) = more sensitive; raise (e.g. 4.0) = stricter.
+  noiseMultiplier: 3.0,
+
+  // Minimum overlap fraction between an audio segment and a motion segment
+  // for them to be considered "agreeing" (0–1). 0.3 = 30% of the shorter
+  // segment must overlap.
+  minSegmentOverlap: 0.3,
+
+  // Minimum confidence to include a segment (0–1).
+  // 1.0 = only segments confirmed by both signals
+  // 0.7 = include audio-only (and above)
+  // 0.6 = include motion-only (and above) — keep everything
+  minSegmentConfidence: 0.5,
 
 
   // ── System ──────────────────────────────────────────────────────────────────
