@@ -84,12 +84,13 @@ export default {
   // How many standard deviations above the quiet baseline to set the threshold.
   // 3.0 = only flag audio/motion significantly above background noise.
   // Lower (e.g. 2.0) = more sensitive; raise (e.g. 4.0) = stricter.
-  noiseMultiplier: 2.5,
+  noiseMultiplier: 2.0,
 
   // Minimum overlap fraction between an audio segment and a motion segment
-  // for them to be considered "agreeing" (0–1). 0.3 = 30% of the shorter
-  // segment must overlap.
-  minSegmentOverlap: 0.3,
+  // for them to be considered "agreeing" (0–1). 0.1 = 10% of the shorter
+  // segment must overlap. Audio fires on first impact; motion fires on sustained
+  // movement — they naturally offset by 1–3s, so keep this low.
+  minSegmentOverlap: 0.1,
 
   // Minimum confidence to include a segment (0–1).
   // 1.0 = only segments confirmed by both signals
