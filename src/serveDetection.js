@@ -52,13 +52,16 @@ export async function detectServes(videoPath, segments, tempDir) {
  * Convert serve detection output into a clip list.
  *
  * @param {{ serve_time:number, segment_end:number, detected:boolean }[]} serveData
- * @returns {{ index:number, start:number, end:number, serveDetected:boolean }[]}
+ * @param {{ confidence:number, source:string }[]} segments - cross-validated segments (same order)
+ * @returns {{ index:number, start:number, end:number, serveDetected:boolean, confidence:number, source:string }[]}
  */
-export function buildClipList(serveData) {
+export function buildClipList(serveData, segments = []) {
   return serveData.map((point, i) => ({
-    index: i + 1,
-    start: Math.max(0, point.serve_time - config.preServeBuffer),
-    end:   point.segment_end + config.postPointBuffer,
+    index:         i + 1,
+    start:         Math.max(0, point.serve_time - config.preServeBuffer),
+    end:           point.segment_end + config.postPointBuffer,
     serveDetected: point.detected,
+    confidence:    segments[i]?.confidence ?? 0.6,
+    source:        segments[i]?.source     ?? 'motion',
   }));
 }
