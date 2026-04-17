@@ -18,7 +18,7 @@ export default {
 
   // A play segment must be at least this many seconds long to be considered a point.
   // Filters out brief motion blips (bird flying by, etc.)
-  minPlayDuration: 3.0,
+  minPlayDuration: 2.0,
 
   // How many seconds of low motion before we declare a point has ended.
   // 2.5s works well for recreational play; increase if points are being split.
@@ -49,7 +49,7 @@ export default {
   preServeBuffer: 1.0,
 
   // Seconds to include AFTER the detected point end (catches the ball landing, etc.)
-  postPointBuffer: 0.5,
+  postPointBuffer: 2.5,
 
 
   // ── Audio Onset Detection ───────────────────────────────────────────────────
@@ -65,10 +65,10 @@ export default {
 
   // Minimum cluster duration (seconds) to count as a real point.
   // Filters out stray sounds (crowd clap, chair scrape).
-  audioMinPointDuration: 3.0,
+  audioMinPointDuration: 2.0,
 
   // Seconds added after the last impact to catch the ball landing.
-  audioPostBuffer: 1.5,
+  audioPostBuffer: 3.0,
 
 
   // ── Cross-validation ────────────────────────────────────────────────────────
@@ -84,7 +84,7 @@ export default {
   // How many standard deviations above the quiet baseline to set the threshold.
   // 3.0 = only flag audio/motion significantly above background noise.
   // Lower (e.g. 2.0) = more sensitive; raise (e.g. 4.0) = stricter.
-  noiseMultiplier: 2.0,
+  noiseMultiplier: 1.5,
 
   // Minimum overlap fraction between an audio segment and a motion segment
   // for them to be considered "agreeing" (0–1). 0.1 = 10% of the shorter
